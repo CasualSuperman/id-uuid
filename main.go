@@ -2,18 +2,18 @@ package main
 
 import (
 	"bytes"
-	"crypto/cipher"
+//	"crypto/cipher"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"math/rand"
 
 	"crypto/aes"
 )
 
-var one = big.NewInt(1)
+const byteNum = 128 / 8
 
-type uint128 [128 / 8]byte
+type uint128 [byteNum]byte
 
 func encodeHex(data uint128) string {
 	dst := make([]byte, hex.EncodedLen(len(data)))
@@ -31,7 +31,7 @@ func main() {
 	fmt.Printf("%-10s : %s\n", "Key", encodeHex(key))
 
 	var end uint128
-	for i := 0; i < 1; i++ {//, _ := range end {
+	for i := 0; i < 2; i++ {//, _ := range end {
 		end[len(end) - i - 1] = 0xFF
 	}
 
@@ -43,7 +43,7 @@ func main() {
 	var ciphertext uint128
 	var deciphertext uint128
 	for bytes.Compare(plaintext[:], end[:]) < 0 {
-		plaintext = increment(plaintext)
+		plaintext = incrementByte(plaintext)
 		fmt.Printf("%-10s: %s\n", "Plaintext", encodeHex(plaintext))
 		cipher.Encrypt(ciphertext[:], plaintext[:])
 		fmt.Printf("%-10s: %s\n", "Ciphertext", encodeHex(ciphertext))
@@ -52,41 +52,27 @@ func main() {
 	}
 }
 
-func increment(item uint128) uint128 {
-	i := big.NewInt(0)
-	//fmt.Println(i)
-	i.SetBytes(item[:])
-	//fmt.Println(i)
-	i = i.Add(i, one)
-	//fmt.Println(i)
-	return bigToUint128(i);
+func incrementByte(item uint128) uint128 {
+	higher, lower := uint128Touint642(item)
+
+	lower++
+	if lower == 0 {
+		higher++
+	}
+
+	return uint642Touint128(higher, lower)
 }
 
-func bigToUint128 (i *big.Int) uint128 {
-	var dest uint128
-	slice := i.Bytes()
-	l := len(slice)
-	copy(dest[len(dest) - l:], slice)
-	return dest
+func uint128Touint642(item uint128) (uint64, uint64) {
+	lower := binary.BigEndian.Uint64(item[byteNum / 2:])
+	higher := binary.BigEndian.Uint64(item[:byteNum / 2])
+	return higher, lower
 }
 
-type FeistelCipher struct {
-	key uint128
-	tweak uint128
-}
 
-func (f FeistelCipher) BlockSize() int {
-	return 128 / 8
-}
-
-func (f FeistelCipher) Encrypt(dst, src []byte) {
-
-}
-
-func (f FeistelCipher) Decrypt(dst, src []byte) {
-
-}
-
-func NewCipher() cipher.Block {
-	return &FeistelCipher{}
+func uint642Touint128(higher, lower uint64) uint128 {
+	var item uint128
+	binary.BigEndian.PutUint64(item[byteNum / 2:], lower)
+	binary.BigEndian.PutUint64(item[:byteNum / 2], higher)
+	return item
 }
